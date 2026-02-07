@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Antway Singapore — Task Dependency & Delay Map</title>
+  <style>
+    body { margin: 0; padding: 0; background: #0f172a; }
+    * { box-sizing: border-box; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel">
+    const { useState, useCallback, useMemo } = React;
+
+    /* ================================================================
+       Antway Singapore – Task Dependency & Delay Causality Map
+       JAN12 → FEB6  |  JP / EN toggle  |  Chain filter  |  Hover detail
+       ================================================================ */
+
+    // ── i18n ──
+    const L = {
+      ja: {
+        title: "Antway Singapore — タスク依存関係 & 遅延因果マップ",
+        subtitle: "28 Tai Seng Ave #04-03 | JAN12版 → FEB6版 比較",
+        hover: "ノードをホバーで詳細表示",
+        langBtn: "EN",
+        legend: { done:"完了", progress:"進行中", delay:"遅延", critical:"大幅遅延", new_:"新規追加", wait:"未着手" },
+        edgeLbl: { cp:"クリティカルパス", dp:"遅延伝播", nm:"通常依存" },
+        chains: { all:"全体表示", floor:"床工事連鎖", wall:"壁・天井連鎖", mep:"設備系", equip:"厨房機器", elec:"電気工事", plumb:"配管工事", reg:"法規・申請" },
+        phases: [
+          "Phase 0: 準備・引渡し・申請",
+          "Phase 1: 解体・撤去",
+          "Phase 2: 床工事 (クリティカルパス)",
+          "Phase 3: 壁・天井・ドア工事",
+          "Phase 4: 設備 (空調・換気・冷凍・消火)",
+          "Phase 5: 配管・電気 (Landlord管理)",
+          "Phase 6: 厨房機器搬入",
+          "Phase 7: 仕上げ・検査・完了",
+        ],
+        tip: { assignee:"担当", jan:"JAN12", feb:"FEB6", prog:"進捗推移", delay:"遅延日数", none:"なし", days:"日" },
+        summary: {
+          title:"遅延サマリー",
+          ext:"プロジェクト延長", orig:"当初完了", cur:"現在完了", max:"最大遅延",
+          crit:"大幅遅延タスク", added:"新規追加", done:"完了タスク",
+          root:"根本原因 Top3",
+          r1:"1. 床工事の連鎖遅延", r2:"2. 外部委託先への依存", r3:"3. スコープ拡大 (+8タスク)",
+        },
+      },
+      en: {
+        title: "Antway Singapore — Task Dependency & Delay Map",
+        subtitle: "28 Tai Seng Ave #04-03 | JAN12 → FEB6 Comparison",
+        hover: "Hover nodes for details",
+        langBtn: "JP",
+        legend: { done:"Done", progress:"In Progress", delay:"Delayed", critical:"Critical Delay", new_:"New Task", wait:"Not Started" },
+        edgeLbl: { cp:"Critical Path", dp:"Delay Propagation", nm:"Normal Dep." },
+        chains: { all:"Show All", floor:"Floor Chain", wall:"Wall/Ceiling", mep:"MEP Systems", equip:"Kitchen Equip", elec:"Electrical", plumb:"Plumbing", reg:"Regulatory" },
+        phases: [
+          "Phase 0: Preparation / Handover / Submissions",
+          "Phase 1: Demolition & Removal",
+          "Phase 2: Flooring Works (Critical Path)",
+          "Phase 3: Wall / Ceiling / Door Works",
+          "Phase 4: MEP (Aircon / Ventilation / Refrigeration / Fire)",
+          "Phase 5: Plumbing & Electrical (Landlord-managed)",
+          "Phase 6: Kitchen Equipment Installation",
+          "Phase 7: Finishing / Inspection / Completion",
+        ],
+        tip: { assignee:"Assignee", jan:"JAN12", feb:"FEB6", prog:"Progress", delay:"Delay", none:"None", days:" days" },
+        summary: {
+          title:"Delay Summary",
+          ext:"Project Extension", orig:"Original End", cur:"Current End", max:"Max Delay",
+          crit:"Critical Tasks", added:"New Tasks", done:"Completed",
+          root:"Root Causes Top 3",
+          r1:"1. Floor works cascade", r2:"2. External contractor dep.", r3:"3. Scope expansion (+8 tasks)",
+        },
+      },
+    };
+
+    // ── Task data (bilingual labels) ──
+    const TASKS = [
+      // Phase 0
+      { id:"ptw", ja:"PTW承認書類提出", en:"PTW Document Submission", sub:"FOODNET/SAKAE", phase:0, col:0, status:"done", prog:"100%", j:"24/11-30/11", f:"24/11-30/11", delay:0, chains:["reg"], noteJa:"", noteEn:"" },
+      { id:"take", ja:"ユニット引渡し", en:"Unit Handover", sub:"ANTWAY/FOODNET", phase:0, col:1, status:"done", prog:"100%", j:"01/12", f:"01/12", delay:0, chains:["floor","wall","mep","equip"] },
+      { id:"sfa", ja:"SFA申請〜ライセンス", en:"SFA License Application", sub:"FOODNET", phase:0, col:2, status:"critical", prog:"50%→50%", j:"03/11-28/02 (118d)", f:"03/11-17/04 (166d)", delay:48, chains:["reg"], noteJa:"工期118→166日。50%で停滞", noteEn:"Duration 118→166 days. Stalled at 50%" },
+      { id:"fssd", ja:"FSSD申請 (SCDF)", en:"FSSD Submission (SCDF)", sub:"TONG LOONG", phase:0, col:3, status:"critical", prog:"0%→0%", j:"29/12-28/02 (62d)", f:"29/12-18/03 (80d)", delay:18, chains:["reg"], noteJa:"外部委託先(Tong Loong)依存。進捗0%", noteEn:"External contractor (Tong Loong) dependency. 0% progress" },
+
+      // Phase 1
+      { id:"d_fix", ja:"既存設備撤去", en:"Existing Fixtures Disposal", sub:"FOODNET", phase:1, col:0, status:"done", prog:"80%→100%", j:"01/12-21/12", f:"01/12-21/12", delay:0, chains:["floor","wall"] },
+      { id:"d_elec", ja:"既存電気切断", en:"Existing Electrical Termination", sub:"ALLIANCE", phase:1, col:1, status:"done", prog:"80%→100%", j:"01/12-07/12", f:"01/12-07/12", delay:0, chains:["elec"] },
+      { id:"d_kit", ja:"厨房機器撤去", en:"Kitchen Equipment Disposal", sub:"FOODNET", phase:1, col:2, status:"done", prog:"100%", j:"01/12-07/12", f:"01/12-07/12", delay:0, chains:["floor"] },
+      { id:"d_wall", ja:"壁解体(Wash Room)", en:"Wall Hacking (Wash Room)", sub:"FOODNET", phase:1, col:3, status:"done", prog:"100%", j:"08/12-09/12", f:"08/12-09/12", delay:0, chains:["wall"] },
+      { id:"d_door", ja:"木製ドア解体", en:"Wooden Door Dismantling", sub:"FOODNET", phase:1, col:4, status:"done", prog:"80%→100%", j:"07/01-13/01", f:"07/01-13/01", delay:0, chains:["wall"] },
+      { id:"d_ceil", ja:"天井グリッド解体 [新規]", en:"Ceiling Grid Removal [NEW]", sub:"FOODNET", phase:1, col:5, status:"new", prog:"—→100%", j:"—", f:"07/01-13/01", delay:0, noteJa:"FEB6版で新規追加", noteEn:"New in FEB6", chains:["wall"] },
+
+      // Phase 2 - Flooring
+      { id:"f_hack", ja:"床解体(新排水用)", en:"Floor Hacking (New Drainage)", sub:"FOODNET", phase:2, col:0, status:"done", prog:"0%→100%", j:"16/01-17/01", f:"20/01-21/01", delay:4, chains:["floor"], noteJa:"冷凍庫撤去待ちで4日遅延", noteEn:"4-day delay waiting for freezer removal" },
+      { id:"f_brc", ja:"BRC鉄筋補強", en:"BRC Reinforcement", sub:"FOODNET", phase:2, col:1, status:"done", prog:"0%→100%", j:"18/01-21/01 (4d)", f:"22/01-28/01 (7d)", delay:7, chains:["floor"], noteJa:"工期4→7日に延長。前工程遅延の連鎖", noteEn:"Duration extended 4→7 days. Upstream cascade" },
+      { id:"f_cem", ja:"セメント工事", en:"Cementing Works", sub:"FOODNET", phase:2, col:2, status:"critical", prog:"0%→0%", j:"22/01-24/01 (3d)", f:"07/02-13/02 (7d)", delay:20, chains:["floor"], noteJa:"開始16日遅延。工期3→7日。連鎖+工数増", noteEn:"Start delayed 16 days. Duration 3→7 days" },
+      { id:"f_cure", ja:"セメント養生 (21日)", en:"Cement Curing (21 days)", sub:"FOODNET", phase:2, col:3, status:"critical", prog:"0%→0%", j:"25/01-14/02", f:"14/02-06/03", delay:20, chains:["floor"], noteJa:"養生期間は短縮困難。遅延そのまま伝播", noteEn:"Curing period non-compressible. Delay propagated" },
+      { id:"f_raised", ja:"高床解体(新排水)", en:"Raised Floor Hacking", sub:"FOODNET", phase:2, col:4, status:"delay", prog:"0%→0%", j:"14/02-15/02", f:"24/02-25/02", delay:10, chains:["floor"], noteJa:"養生完了待ち", noteEn:"Waiting for curing completion" },
+      { id:"f_epoxy", ja:"エポキシ床工事", en:"Floor Epoxy Works", sub:"FOODNET", phase:2, col:5, status:"critical", prog:"0%→0%", j:"20/02-26/02", f:"07/03-13/03", delay:15, chains:["floor"], noteJa:"全Flooring遅延の最終影響", noteEn:"Final impact of all flooring delays" },
+
+      // Phase 3 - Wall/Ceiling/Door
+      { id:"w_part", ja:"壁パーティション(Hot Kitchen)", en:"Wall Partition (Hot Kitchen)", sub:"FOODNET", phase:3, col:0, status:"done", prog:"0%→100%", j:"13/01-17/01", f:"22/01-26/01", delay:9, chains:["wall"], noteJa:"開始9日遅れだが完了", noteEn:"Started 9 days late but completed" },
+      { id:"w_fire", ja:"防火壁(Walk-in Chiller)", en:"Fire-rated Wall (Chiller)", sub:"FOODNET", phase:3, col:1, status:"progress", prog:"0%→50%", j:"13/01-19/01", f:"22/01-28/01", delay:9, chains:["wall"] },
+      { id:"w_ceil", ja:"天井グリッド設置 [新規]", en:"Ceiling Grid Install [NEW]", sub:"FOODNET", phase:3, col:2, status:"new", prog:"—→70%", j:"—", f:"24/01-15/02 (23d)", delay:0, chains:["wall"], noteJa:"FEB6版で追加の大型タスク(23日)", noteEn:"Large new task (23 days) added in FEB6" },
+      { id:"w_epoxy", ja:"壁塗装(General)", en:"Wall Epoxy (General)", sub:"FOODNET", phase:3, col:3, status:"critical", prog:"0%→0%", j:"19/01-01/02 (14d)", f:"14/02-18/02 (5d)", delay:17, chains:["wall"], noteJa:"開始26日遅延。工期短縮で調整(14→5日)", noteEn:"Start delayed 26 days. Duration reduced 14→5 days" },
+      { id:"w_touch", ja:"壁塗装 Touch-up", en:"Wall Epoxy Touch-up", sub:"FOODNET", phase:3, col:4, status:"critical", prog:"0%→0%", j:"19/01-01/02", f:"16/03-20/03", delay:47, chains:["wall"], noteJa:"約2ヶ月遅延。最終仕上げ後回し", noteEn:"~2 months delay. Final finish deferred" },
+      { id:"w_door", ja:"アルミドア設置", en:"Aluminum Door Install", sub:"FOODNET", phase:3, col:5, status:"delay", prog:"0%→0%", j:"02/02-15/02", f:"09/02-22/02", delay:7, chains:["wall"] },
+      { id:"w_fdoor", ja:"防火ドア・アングルバー", en:"Fire Door & Angle Bars", sub:"FOODNET", phase:3, col:6, status:"delay", prog:"0%→0%", j:"09/02-15/02", f:"23/02-27/02", delay:12, chains:["wall"] },
+
+      // Phase 4 - MEP
+      { id:"ac_svc", ja:"既存エアコン整備", en:"Existing Aircon Servicing", sub:"FOODNET", phase:4, col:0, status:"done", prog:"100%", j:"15/12-17/12", f:"15/12-17/12", delay:0, chains:["mep"] },
+      { id:"ac_ctrl", ja:"エアコン制御移設", en:"Aircon Controller Relocation", sub:"FOODNET", phase:4, col:1, status:"progress", prog:"0%→80%", j:"12/01-18/01", f:"12/01-18/01", delay:0, chains:["mep"] },
+      { id:"ac_cass", ja:"天井カセット移設", en:"Ceiling Cassette Relocation", sub:"FOODNET", phase:4, col:2, status:"done", prog:"0%→100%", j:"19/01-21/01", f:"19/01-21/01", delay:0, chains:["mep"], noteJa:"Hot Kitchen天井カセット", noteEn:"Hot Kitchen ceiling cassette" },
+      { id:"ac_fcu", ja:"壁掛FCU設置 (TBC)", en:"Wall-mounted FCU (TBC)", sub:"FOODNET", phase:4, col:3, status:"wait", prog:"0%→0%", j:"22/12-28/12", f:"22/12-28/12", delay:0, chains:["mep"], noteJa:"設計未確定(TBC)", noteEn:"Design not confirmed (TBC)" },
+      { id:"v_exh", ja:"排気システム設置", en:"Exhaust System Install", sub:"FOODNET", phase:4, col:4, status:"progress", prog:"0%→80%", j:"19/01-08/02", f:"19/01-08/02", delay:0, chains:["mep"] },
+      { id:"v_hood", ja:"排気フード整備", en:"Kitchen Hood Servicing", sub:"FOODNET", phase:4, col:5, status:"critical", prog:"0%→0%", j:"02/02-04/02", f:"25/02-27/02", delay:23, chains:["mep"], noteJa:"排気システム+床工事影響", noteEn:"Exhaust system + floor works impact" },
+      { id:"r_svc", ja:"冷蔵冷凍設備整備", en:"Chiller/Freezer Servicing", sub:"FOODNET", phase:4, col:6, status:"done", prog:"100%", j:"15/12-19/12", f:"15/12-19/12", delay:0, chains:["mep"] },
+      { id:"r_pipe", ja:"配管断熱工事", en:"Pipe Insulation Works", sub:"FOODNET", phase:4, col:7, status:"done", prog:"100%", j:"10/12-16/12", f:"10/12-16/12", delay:0, chains:["mep"], noteJa:"JAN12で100%完了", noteEn:"100% complete in JAN12" },
+      { id:"r_blow", ja:"ブロワーユニット取付", en:"Blower Units Mounting", sub:"FOODNET", phase:4, col:8, status:"done", prog:"80%→100%", j:"08/12-28/12 (21d)", f:"08/12-28/12", delay:0, chains:["mep"], noteJa:"21日間の大型機械工事", noteEn:"21-day major mechanical task" },
+      { id:"r_cold", ja:"コールドルーム設置(壁/床)", en:"Coldroom Panels (Wall/Floor)", sub:"FOODNET", phase:4, col:9, status:"progress", prog:"0%→90%", j:"26/01-15/02 (21d)", f:"26/01-15/02", delay:0, chains:["mep"] },
+      { id:"r_ceil", ja:"コールドルーム天井 [新規]", en:"Coldroom Ceiling [NEW]", sub:"FOODNET", phase:4, col:10, status:"new", prog:"—→0%", j:"—", f:"19/02-23/02 (5d)", delay:0, chains:["mep"], noteJa:"壁/床から分離", noteEn:"Separated from wall/floor panels" },
+      { id:"fire_s", ja:"消火設備 [新規]", en:"Fire Suppression [NEW]", sub:"FOODNET", phase:4, col:11, status:"new", prog:"—→0%", j:"—", f:"25/02 (1d)", delay:0, chains:["mep","reg"], noteJa:"法規対応で追加", noteEn:"Added for regulatory compliance" },
+      { id:"sprink", ja:"スプリンクラー [新規]", en:"Sprinkler Works [NEW]", sub:"TONG LOONG", phase:4, col:12, status:"new", prog:"—→0%", j:"—", f:"12/02 (1d)", delay:0, chains:["mep","reg"] },
+
+      // Phase 5 - Plumbing/Electrical
+      { id:"p_term", ja:"未使用配管撤去", en:"Unused Plumbing Termination", sub:"ALLIANCE", phase:5, col:0, status:"progress", prog:"50%→90%", j:"19/01-25/01", f:"19/01-25/01", delay:0, chains:["plumb"] },
+      { id:"p_new", ja:"新配管ポイント設置", en:"New Plumbing Points", sub:"ALLIANCE", phase:5, col:1, status:"progress", prog:"0%→80%", j:"19/01-25/01", f:"19/01-25/01", delay:0, chains:["plumb"] },
+      { id:"p_basin", ja:"手洗いベースン設置", en:"Handwash Basin Install", sub:"FOODNET", phase:5, col:2, status:"critical", prog:"0%→0%", j:"19/01-25/01", f:"25/02-03/03", delay:37, chains:["plumb","floor"], noteJa:"Landlord管理配管+床工事に依存。37日遅延", noteEn:"Depends on Landlord plumbing + floor works. 37-day delay" },
+      { id:"e_cable", ja:"ケーブル配線", en:"New Cabling Works", sub:"ALLIANCE", phase:5, col:3, status:"progress", prog:"20%→70%", j:"22/12-01/02 (42d)", f:"22/12-01/02", delay:0, chains:["elec"] },
+      { id:"e_point", ja:"電気ポイント設置", en:"New Electrical Points", sub:"ALLIANCE", phase:5, col:4, status:"progress", prog:"20%→70%", j:"05/01-15/02 (42d)", f:"05/01-15/02", delay:0, chains:["elec"] },
+      { id:"e_lpoint", ja:"照明ポイント設置", en:"New Lighting Points", sub:"ALLIANCE", phase:5, col:5, status:"wait", prog:"0%→0%", j:"01/02-14/02 (14d)", f:"01/02-14/02", delay:0, chains:["elec"] },
+      { id:"e_lfit", ja:"照明器具設置", en:"Light Fittings Install", sub:"ALLIANCE", phase:5, col:6, status:"wait", prog:"0%→0%", j:"01/02-14/02 (14d)", f:"01/02-14/02", delay:0, chains:["elec"], noteJa:"照明ポイントとは別タスク", noteEn:"Separate from lighting points" },
+      { id:"e_lew", ja:"LEW通電・図面 (90日)", en:"LEW Turn-on & Drawings (90d)", sub:"ALLIANCE", phase:5, col:7, status:"wait", prog:"0%→0%", j:"01/12-28/02 (90d)", f:"01/12-28/02", delay:0, chains:["elec","reg"], noteJa:"Landlord管理に依存", noteEn:"Dependent on Landlord-managed works" },
+
+      // Phase 6 - Kitchen Equipment
+      { id:"k_order", ja:"厨房機器発注・到着", en:"Kitchen Equip Order/Arrival", sub:"APEXLINK", phase:6, col:0, status:"progress", prog:"0%→70%", j:"01/11-24/01 (84d)", f:"01/11-24/01", delay:0, chains:["equip"] },
+      { id:"k_del", ja:"機器搬入・接続", en:"Equipment Delivery & Connect", sub:"APEXLINK", phase:6, col:1, status:"progress", prog:"0%→0%", j:"12/01-22/01 (10d)", f:"12/01-22/01", delay:0, chains:["equip"], noteJa:"FEB6で第1弾/第2弾に分割", noteEn:"Split into Batch 1/2 in FEB6" },
+      { id:"k_test_orig", ja:"テスト・コミッショニング", en:"Testing & Commissioning", sub:"APEXLINK", phase:6, col:2, status:"progress", prog:"0%→0%", j:"23/01-26/01 (3d)", f:"23/01-26/01", delay:0, chains:["equip"] },
+      { id:"k_inst1", ja:"機器搬入 第1弾 [FEB6]", en:"Equip Install Batch 1 [FEB6]", sub:"APEXLINK", phase:6, col:3, status:"critical", prog:"0%→0%", j:"—", f:"27/02-05/03 (7d)", delay:42, chains:["equip"], noteJa:"床・壁完了待ち。42日遅延", noteEn:"Waiting for floor/wall. 42-day delay" },
+      { id:"k_test1", ja:"テスト 第1弾 [FEB6]", en:"Test Batch 1 [FEB6]", sub:"APEXLINK", phase:6, col:4, status:"critical", prog:"0%→0%", j:"—", f:"27/02-05/03 (7d)", delay:38, chains:["equip"], noteJa:"機器設置遅延に連動", noteEn:"Linked to equipment install delay" },
+      { id:"k_inst2", ja:"機器搬入 第2弾 [新規]", en:"Equip Install Batch 2 [NEW]", sub:"APEXLINK", phase:6, col:5, status:"new", prog:"—→0%", j:"—", f:"16/03-23/03 (8d)", delay:0, chains:["equip"], noteJa:"Rational製品(12週納期)", noteEn:"Rational products (12-week lead)" },
+      { id:"k_test2", ja:"テスト 第2弾 [新規]", en:"Test Batch 2 [NEW]", sub:"APEXLINK", phase:6, col:6, status:"new", prog:"—→0%", j:"—", f:"16/03-23/03", delay:0, chains:["equip"] },
+
+      // Phase 7 - Finishing
+      { id:"pest", ja:"害虫駆除(燻蒸)", en:"Pest Control (Fumigation)", sub:"AARDWOLF", phase:7, col:0, status:"done", prog:"0%→100%", j:"12/01", f:"12/01", delay:0, chains:["finish"] },
+      { id:"misc", ja:"小型家電搬入 [新規]", en:"Small Appliances [NEW]", sub:"ANTWAY", phase:7, col:1, status:"new", prog:"—→0%", j:"—", f:"09/03-13/03 (5d)", delay:0, chains:["finish"] },
+      { id:"clean", ja:"エリア清掃", en:"Area Cleaning", sub:"FOODNET", phase:7, col:2, status:"critical", prog:"0%→0%", j:"26/01-29/01 (4d)", f:"17/03-20/03", delay:50, chains:["floor","wall","mep","equip","finish"], noteJa:"全工程遅延の集約。50日遅延", noteEn:"Aggregate of all upstream delays. 50-day delay" },
+      { id:"lbl_sfa", ja:"SFA検査用ラベリング", en:"Room Labelling for SFA", sub:"FOODNET", phase:7, col:3, status:"critical", prog:"0%→0%", j:"30/01", f:"20/03", delay:49, chains:["floor","wall","mep","equip","reg","finish"], noteJa:"49日遅延。SFA検査の前提", noteEn:"49-day delay. Prerequisite for SFA inspection" },
+      { id:"handover", ja:"プロジェクト完了", en:"Project Completion", sub:"ALL", phase:7, col:4, status:"critical", prog:"—", j:"Week13 (2/28)", f:"Week17 (3/23)", delay:23, chains:["floor","wall","mep","equip","reg","finish"], noteJa:"4週間のプロジェクト全体遅延", noteEn:"4-week overall project delay" },
+    ];
+
+    const EDGES = [
+      { from:"take", to:"d_fix", type:"normal" },
+      { from:"take", to:"d_elec", type:"normal" },
+      { from:"take", to:"d_kit", type:"normal" },
+      { from:"d_fix", to:"f_hack", type:"delay", lJa:"+4日", lEn:"+4d" },
+      { from:"d_kit", to:"f_hack", type:"normal" },
+      { from:"f_hack", to:"f_brc", type:"critical", lJa:"+4日", lEn:"+4d" },
+      { from:"f_brc", to:"f_cem", type:"critical", lJa:"+7日", lEn:"+7d" },
+      { from:"f_cem", to:"f_cure", type:"critical", lJa:"+20日", lEn:"+20d" },
+      { from:"f_cure", to:"f_raised", type:"critical", lJa:"+20日", lEn:"+20d" },
+      { from:"f_raised", to:"f_epoxy", type:"critical", lJa:"+10日", lEn:"+10d" },
+      { from:"f_hack", to:"w_part", type:"delay", lJa:"床→壁+9日", lEn:"Floor→Wall+9d" },
+      { from:"d_wall", to:"w_part", type:"normal" },
+      { from:"d_wall", to:"w_fire", type:"normal" },
+      { from:"d_ceil", to:"w_ceil", type:"normal" },
+      { from:"w_part", to:"w_epoxy", type:"delay", lJa:"+17日", lEn:"+17d" },
+      { from:"w_fire", to:"w_epoxy", type:"normal" },
+      { from:"w_epoxy", to:"w_touch", type:"delay", lJa:"+47日", lEn:"+47d" },
+      { from:"d_door", to:"w_door", type:"normal" },
+      { from:"w_epoxy", to:"w_door", type:"delay" },
+      { from:"w_door", to:"w_fdoor", type:"normal" },
+      { from:"ac_svc", to:"ac_ctrl", type:"normal" },
+      { from:"ac_ctrl", to:"ac_cass", type:"normal" },
+      { from:"v_exh", to:"v_hood", type:"delay", lJa:"+23日", lEn:"+23d" },
+      { from:"v_hood", to:"fire_s", type:"normal" },
+      { from:"r_svc", to:"r_blow", type:"normal" },
+      { from:"r_pipe", to:"r_blow", type:"normal" },
+      { from:"r_blow", to:"r_cold", type:"normal" },
+      { from:"r_cold", to:"r_ceil", type:"normal" },
+      { from:"p_term", to:"p_new", type:"normal" },
+      { from:"p_new", to:"p_basin", type:"delay", lJa:"+37日", lEn:"+37d" },
+      { from:"f_epoxy", to:"p_basin", type:"delay" },
+      { from:"d_elec", to:"e_cable", type:"normal" },
+      { from:"e_cable", to:"e_point", type:"normal" },
+      { from:"e_point", to:"e_lpoint", type:"normal" },
+      { from:"e_lpoint", to:"e_lfit", type:"normal" },
+      { from:"e_lfit", to:"e_lew", type:"normal" },
+      { from:"k_order", to:"k_del", type:"normal" },
+      { from:"k_del", to:"k_test_orig", type:"normal" },
+      { from:"k_order", to:"k_inst1", type:"delay", lJa:"+42日", lEn:"+42d" },
+      { from:"f_epoxy", to:"k_inst1", type:"delay", lJa:"床完了待ち", lEn:"Floor dep." },
+      { from:"w_epoxy", to:"k_inst1", type:"delay", lJa:"壁完了待ち", lEn:"Wall dep." },
+      { from:"k_inst1", to:"k_test1", type:"critical" },
+      { from:"k_order", to:"k_inst2", type:"normal" },
+      { from:"k_inst2", to:"k_test2", type:"normal" },
+      { from:"f_epoxy", to:"clean", type:"critical", lJa:"床→清掃", lEn:"Floor→Clean" },
+      { from:"w_touch", to:"clean", type:"delay", lJa:"壁→清掃", lEn:"Wall→Clean" },
+      { from:"k_test1", to:"clean", type:"delay" },
+      { from:"v_hood", to:"clean", type:"delay" },
+      { from:"clean", to:"lbl_sfa", type:"critical", lJa:"+50日", lEn:"+50d" },
+      { from:"lbl_sfa", to:"handover", type:"critical", lJa:"+49日", lEn:"+49d" },
+      { from:"sfa", to:"handover", type:"delay" },
+      { from:"fssd", to:"handover", type:"delay" },
+      { from:"k_test2", to:"handover", type:"normal" },
+      { from:"e_lew", to:"handover", type:"normal" },
+    ];
+
+    const CHAIN_KEYS = ["all","floor","wall","mep","equip","elec","plumb","reg"];
+    const CHAIN_COLORS = { all:"#94a3b8", floor:"#ef4444", wall:"#f59e0b", mep:"#3b82f6", equip:"#8b5cf6", elec:"#06b6d4", plumb:"#10b981", reg:"#f43f5e", finish:"#94a3b8" };
+
+    const STATUS_STYLES = {
+      done:     { bg:"#064e3b", bd:"#4ade80" },
+      progress: { bg:"#0c2d48", bd:"#3b82f6" },
+      delay:    { bg:"#451a03", bd:"#f59e0b" },
+      critical: { bg:"#450a0a", bd:"#ef4444" },
+      new:      { bg:"#2e1065", bd:"#8b5cf6" },
+      wait:     { bg:"#1e1b2e", bd:"#64748b" },
+    };
+
+    const EDGE_STYLES = {
+      critical: { stroke:"#ef4444", w:2.5, dash:"" },
+      delay:    { stroke:"#f59e0b", w:2, dash:"6,3" },
+      normal:   { stroke:"#475569", w:1.5, dash:"" },
+    };
+
+    const PHASE_COLORS = ["#334155","#1e3a5f","#5b1a1a","#1e3a5f","#334155","#1e3a5f","#334155","#5b1a1a"];
+
+    // ── Layout ──
+    const NW=155, NH=52, PX=18, PY=14, LM=16, TM=8, PH=28, PP=30;
+
+    function calcLayout(tasks) {
+      const phaseCols = {};
+      tasks.forEach(t => { phaseCols[t.phase] = Math.max(phaseCols[t.phase]||0, t.col+1); });
+      const maxC = Math.max(...Object.values(phaseCols));
+      const svgW = LM*2 + maxC*(NW+PX);
+      let y = TM;
+      const phaseY = {};
+      for (let p=0; p<8; p++) {
+        const cols = phaseCols[p]||1;
+        const rows = Math.ceil(cols/maxC);
+        phaseY[p] = { top:y, bodyH: rows*(NH+PY)+PY };
+        y += PH + phaseY[p].bodyH + PP;
+      }
+      const pos = {};
+      tasks.forEach(t => {
+        const py = phaseY[t.phase];
+        const cols = phaseCols[t.phase];
+        const row = Math.floor(t.col/maxC);
+        const col = t.col % maxC;
+        const totalW = Math.min(cols, maxC)*(NW+PX)-PX;
+        const ox = (svgW-totalW)/2;
+        pos[t.id] = { x: ox+col*(NW+PX), y: py.top+PH+PY+row*(NH+PY), cx: ox+col*(NW+PX)+NW/2, cy: py.top+PH+PY+row*(NH+PY)+NH/2 };
+      });
+      return { svgW, svgH:y, phaseY, pos };
+    }
+
+    // ── Main App ──
+    function App() {
+      const [lang, setLang] = useState("ja");
+      const [chain, setChain] = useState("all");
+      const [hov, setHov] = useState(null);
+      const [tip, setTip] = useState(null);
+      const t = L[lang];
+      const { svgW, svgH, phaseY, pos } = useMemo(() => calcLayout(TASKS), []);
+
+      const vis = useCallback(task => chain==="all" || task.chains.includes(chain), [chain]);
+      const eVis = useCallback(e => {
+        if (chain==="all") return true;
+        const a=TASKS.find(x=>x.id===e.from), b=TASKS.find(x=>x.id===e.to);
+        return a && b && a.chains.includes(chain) && b.chains.includes(chain);
+      }, [chain]);
+
+      const onEnter = (task, ev) => {
+        setHov(task.id);
+        const r = ev.currentTarget.getBoundingClientRect();
+        setTip({ task, x: r.right+10, y: r.top });
+      };
+
+      const pct = p => {
+        if(!p) return 0;
+        if(p.includes("100")) return 100; if(p.includes("90")) return 90; if(p.includes("80")) return 80;
+        if(p.includes("70")) return 70; if(p.includes("50")) return 50; if(p.includes("20")) return 20; return 0;
+      };
+
+      const edgePaths = EDGES.map((e,i) => {
+        const a=pos[e.from], b=pos[e.to];
+        if(!a||!b) return null;
+        const at=TASKS.find(x=>x.id===e.from), bt=TASKS.find(x=>x.id===e.to);
+        let x1,y1,x2,y2;
+        if(at.phase===bt.phase){
+          if(a.x<b.x){ x1=a.x+NW; y1=a.cy; x2=b.x; y2=b.cy; }
+          else { x1=a.x; y1=a.cy; x2=b.x+NW; y2=b.cy; }
+        } else { x1=a.cx; y1=a.y+NH; x2=b.cx; y2=b.y; }
+        const dx=x2-x1, dy=y2-y1;
+        const path = at.phase===bt.phase
+          ? `M${x1},${y1} C${x1+dx*.4},${y1} ${x2-dx*.4},${y2} ${x2},${y2}`
+          : `M${x1},${y1} C${x1},${y1+dy*.5} ${x2},${y2-dy*.5} ${x2},${y2}`;
+        const st = EDGE_STYLES[e.type]||EDGE_STYLES.normal;
+        return { ...e, path, st, at, bt, i };
+      }).filter(Boolean);
+
+      return (
+        <div style={{ background:"#0f172a", minHeight:"100vh", fontFamily:"'Segoe UI','Hiragino Sans',sans-serif", color:"#e2e8f0" }}>
+          {/* Header */}
+          <div style={{ background:"linear-gradient(135deg,#1e3a5f,#0f172a)", padding:"16px 24px", borderBottom:"2px solid #334155", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <div>
+              <h1 style={{ fontSize:18, fontWeight:700, color:"#f1f5f9", margin:0 }}>{t.title}</h1>
+              <p style={{ fontSize:11, color:"#94a3b8", marginTop:2 }}>{t.subtitle} — {t.hover}</p>
+            </div>
+            <button onClick={()=>setLang(lang==="ja"?"en":"ja")} style={{ padding:"6px 16px", borderRadius:6, border:"1px solid #60a5fa", background:"#60a5fa22", color:"#60a5fa", fontWeight:700, fontSize:13, cursor:"pointer" }}>
+              {t.langBtn}
+            </button>
+          </div>
+
+          {/* Legend */}
+          <div style={{ display:"flex", gap:14, padding:"10px 24px", background:"#1e293b", borderBottom:"1px solid #334155", flexWrap:"wrap", alignItems:"center" }}>
+            {Object.entries(STATUS_STYLES).map(([k,s])=>(
+              <div key={k} style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:"#cbd5e1" }}>
+                <div style={{ width:10, height:10, borderRadius:2, background:s.bg, border:`2px solid ${s.bd}` }}/>
+                {t.legend[k==="new"?"new_":k]}
+              </div>
+            ))}
+            <div style={{ width:1, height:14, background:"#475569" }}/>
+            <div style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:"#cbd5e1" }}>
+              <svg width={24} height={8}><line x1={0} y1={4} x2={24} y2={4} stroke="#ef4444" strokeWidth={2.5}/></svg>{t.edgeLbl.cp}
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:"#cbd5e1" }}>
+              <svg width={24} height={8}><line x1={0} y1={4} x2={24} y2={4} stroke="#f59e0b" strokeWidth={2} strokeDasharray="5,3"/></svg>{t.edgeLbl.dp}
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:"#cbd5e1" }}>
+              <svg width={24} height={8}><line x1={0} y1={4} x2={24} y2={4} stroke="#475569" strokeWidth={1.5}/></svg>{t.edgeLbl.nm}
+            </div>
+          </div>
+
+          {/* Chain Filters */}
+          <div style={{ display:"flex", gap:5, padding:"8px 24px", background:"#1e293b", borderBottom:"1px solid #334155", flexWrap:"wrap" }}>
+            {CHAIN_KEYS.map(c=>(
+              <button key={c} onClick={()=>setChain(c)} style={{
+                padding:"4px 10px", borderRadius:5, fontSize:10, cursor:"pointer",
+                border: chain===c ? `1px solid ${CHAIN_COLORS[c]}` : "1px solid #475569",
+                background: chain===c ? CHAIN_COLORS[c]+"22" : "transparent",
+                color: chain===c ? CHAIN_COLORS[c] : "#94a3b8",
+                fontWeight: chain===c ? 700 : 400
+              }}>{t.chains[c]}</button>
+            ))}
+          </div>
+
+          {/* SVG */}
+          <div style={{ overflow:"auto", padding:12 }}>
+            <svg width={svgW} height={svgH} viewBox={`0 0 ${svgW} ${svgH}`} style={{ display:"block" }}>
+              <defs>
+                <marker id="a0" markerWidth={6} markerHeight={4} refX={6} refY={2} orient="auto"><polygon points="0 0,6 2,0 4" fill="#475569"/></marker>
+                <marker id="a1" markerWidth={6} markerHeight={4} refX={6} refY={2} orient="auto"><polygon points="0 0,6 2,0 4" fill="#ef4444"/></marker>
+                <marker id="a2" markerWidth={6} markerHeight={4} refX={6} refY={2} orient="auto"><polygon points="0 0,6 2,0 4" fill="#f59e0b"/></marker>
+              </defs>
+
+              {/* Phase bands */}
+              {[0,1,2,3,4,5,6,7].map(p=>{
+                const py=phaseY[p]; if(!py) return null;
+                return (<g key={p}>
+                  <rect x={0} y={py.top} width={svgW} height={PH+py.bodyH} rx={4} fill={PHASE_COLORS[p]} opacity={0.3}/>
+                  <rect x={0} y={py.top} width={svgW} height={PH} rx={4} fill={PHASE_COLORS[p]} opacity={0.6}/>
+                  <text x={10} y={py.top+PH-8} fontSize={10} fontWeight={700} fill="#cbd5e1" letterSpacing={0.3}>{t.phases[p]}</text>
+                </g>);
+              })}
+
+              {/* Edges */}
+              {edgePaths.map(ep=>{
+                const show=eVis(ep);
+                const hi=hov&&(ep.from===hov||ep.to===hov);
+                const mk=ep.st.stroke==="#ef4444"?"a1":ep.st.stroke==="#f59e0b"?"a2":"a0";
+                const lbl = lang==="ja"?ep.lJa:ep.lEn;
+                return (<g key={`e${ep.i}`} opacity={show?(hi?1:0.5):0.04}>
+                  <path d={ep.path} fill="none" stroke={hi?"#fff":ep.st.stroke} strokeWidth={hi?ep.st.w+1:ep.st.w} strokeDasharray={ep.st.dash} markerEnd={`url(#${mk})`}/>
+                  {lbl&&show&&<text x={(pos[ep.from].cx+pos[ep.to].cx)/2} y={(pos[ep.from].y+NH+pos[ep.to].y)/2-3} fontSize={8} fill={ep.st.stroke} textAnchor="middle" fontWeight={600}>{lbl}</text>}
+                </g>);
+              })}
+
+              {/* Nodes */}
+              {TASKS.map(task=>{
+                const p=pos[task.id]; const s=STATUS_STYLES[task.status]||STATUS_STYLES.wait;
+                const show=vis(task);
+                const isH=hov===task.id;
+                const conn=hov&&EDGES.some(e=>(e.from===hov&&e.to===task.id)||(e.to===hov&&e.from===task.id));
+                const op=show?(hov?(isH||conn?1:0.2):1):0.04;
+                const label=lang==="ja"?task.ja:task.en;
+                const disp=label.length>16?label.slice(0,15)+"…":label;
+                return (<g key={task.id} opacity={op} style={{ cursor:"pointer", transition:"opacity 0.15s" }}
+                  onMouseEnter={ev=>onEnter(task,ev)} onMouseLeave={()=>{setHov(null);setTip(null);}}>
+                  <rect x={p.x} y={p.y} width={NW} height={NH} rx={7} fill={s.bg} stroke={isH?"#fff":s.bd} strokeWidth={isH?2.5:1.5}/>
+                  <text x={p.x+NW/2} y={p.y+16} fontSize={10} fontWeight={600} fill="#f1f5f9" textAnchor="middle">{disp}</text>
+                  <text x={p.x+NW/2} y={p.y+28} fontSize={7.5} fill="#94a3b8" textAnchor="middle">{task.sub.length>22?task.sub.slice(0,21)+"…":task.sub}</text>
+                  <rect x={p.x+8} y={p.y+36} width={NW-16} height={3.5} rx={2} fill="#1e293b"/>
+                  <rect x={p.x+8} y={p.y+36} width={(NW-16)*pct(task.prog)/100} height={3.5} rx={2} fill={s.bd}/>
+                  {task.delay>0&&<><rect x={p.x+NW-34} y={p.y-5} width={36} height={13} rx={6} fill={task.delay>=15?"#ef4444":"#f59e0b"}/><text x={p.x+NW-16} y={p.y+5} fontSize={7.5} fontWeight={700} fill="#fff" textAnchor="middle">+{task.delay}{lang==="ja"?"日":"d"}</text></>}
+                  {task.status==="new"&&<><rect x={p.x-2} y={p.y-5} width={26} height={13} rx={6} fill="#8b5cf6"/><text x={p.x+11} y={p.y+5} fontSize={7} fontWeight={700} fill="#fff" textAnchor="middle">NEW</text></>}
+                </g>);
+              })}
+            </svg>
+          </div>
+
+          {/* Tooltip */}
+          {tip&&<div style={{ position:"fixed", left:Math.min(tip.x,window.innerWidth-300), top:Math.max(Math.min(tip.y,window.innerHeight-260),8),
+            background:"#1e293bee", backdropFilter:"blur(12px)", border:"1px solid #475569", borderRadius:10, padding:"12px 16px",
+            maxWidth:280, zIndex:100, boxShadow:"0 8px 32px rgba(0,0,0,0.6)", pointerEvents:"none" }}>
+            <div style={{ fontSize:13, fontWeight:700, color:"#60a5fa", marginBottom:6 }}>{lang==="ja"?tip.task.ja:tip.task.en}</div>
+            <div style={{ display:"grid", gridTemplateColumns:"auto 1fr", gap:"3px 10px", fontSize:10 }}>
+              <span style={{ color:"#94a3b8" }}>{t.tip.assignee}</span><span>{tip.task.sub}</span>
+              <span style={{ color:"#94a3b8" }}>{t.tip.jan}</span><span>{tip.task.j}</span>
+              <span style={{ color:"#94a3b8" }}>{t.tip.feb}</span><span>{tip.task.f}</span>
+              <span style={{ color:"#94a3b8" }}>{t.tip.prog}</span><span>{tip.task.prog}</span>
+              <span style={{ color:"#94a3b8" }}>{t.tip.delay}</span>
+              <span style={{ color:tip.task.delay>0?"#f87171":"#4ade80", fontWeight:700 }}>
+                {tip.task.delay>0?`+${tip.task.delay}${t.tip.days}`:t.tip.none}
+              </span>
+            </div>
+            {(lang==="ja"?tip.task.noteJa:tip.task.noteEn)&&
+              <div style={{ marginTop:6, paddingTop:6, borderTop:"1px solid #334155", fontSize:10, color:"#fbbf24", lineHeight:1.5 }}>
+                {lang==="ja"?tip.task.noteJa:tip.task.noteEn}
+              </div>}
+          </div>}
+
+          {/* Summary */}
+          <div style={{ position:"fixed", right:12, top:120, width:220, background:"#1e293bdd", backdropFilter:"blur(8px)",
+            border:"1px solid #334155", borderRadius:10, padding:14, fontSize:10, zIndex:50 }}>
+            <div style={{ fontSize:13, fontWeight:700, color:"#60a5fa", marginBottom:8 }}>{t.summary.title}</div>
+            {[
+              [t.summary.ext, "+23"+t.tip.days, "#f87171"],
+              [t.summary.orig, "Week13 (2/28)", "#94a3b8"],
+              [t.summary.cur, "Week17 (3/23)", "#f87171"],
+              [t.summary.max, (lang==="ja"?"清掃":"Cleaning")+" +50"+(lang==="ja"?"日":"d"), "#f87171"],
+              [t.summary.crit, "12", "#f87171"],
+              [t.summary.added, "8", "#60a5fa"],
+              [t.summary.done, "16", "#4ade80"],
+            ].map(([l,v,c],i)=>(
+              <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"3px 0" }}>
+                <span style={{ color:"#94a3b8" }}>{l}</span><span style={{ fontWeight:700, color:c }}>{v}</span>
+              </div>
+            ))}
+            <div style={{ marginTop:8, paddingTop:6, borderTop:"1px solid #334155" }}>
+              <div style={{ fontWeight:700, color:"#fbbf24", marginBottom:4 }}>{t.summary.root}</div>
+              <div style={{ color:"#cbd5e1", lineHeight:1.6 }}>
+                {t.summary.r1}<br/>{t.summary.r2}<br/>{t.summary.r3}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Render ──
+    ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+  </script>
+</body>
+</html>
