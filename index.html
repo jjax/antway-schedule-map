@@ -33,7 +33,7 @@
         langBtn: "EN",
         legend: { done:"完了", progress:"進行中", delay:"遅延", critical:"大幅遅延", new_:"新規追加", wait:"未着手" },
         edgeLbl: { cp:"クリティカルパス", dp:"遅延伝播", nm:"通常依存" },
-        chains: { all:"全体表示", floor:"床工事連鎖", wall:"壁・天井連鎖", mep:"設備系", equip:"厨房機器", elec:"電気工事", plumb:"配管工事", reg:"法規・申請" },
+        chains: { all:"全体表示", floor:"床工事連鎖", wall:"壁・天井連鎖", mep:"設備系", equip:"厨房機器", elec:"電気工事", plumb:"配管工事", reg:"法規・申請", cny:"CNY影響" },
         phases: [
           "Phase 0: 準備・引渡し・申請",
           "Phase 1: 解体・撤去",
@@ -51,6 +51,7 @@
           crit:"大幅遅延タスク", added:"新規追加", done:"完了タスク",
           root:"根本原因 Top3",
           r1:"1. 床工事の連鎖遅延", r2:"2. 外部委託先への依存", r3:"3. スコープ拡大 (+8タスク)",
+          cnyTitle:"CNY休暇期間", cnyDate:"2/14 (金) — 2/25 (火)", cnyNote:"12日間工事停止", cnyAffect:"影響タスク",
         },
       },
       en: {
@@ -60,7 +61,7 @@
         langBtn: "JP",
         legend: { done:"Done", progress:"In Progress", delay:"Delayed", critical:"Critical Delay", new_:"New Task", wait:"Not Started" },
         edgeLbl: { cp:"Critical Path", dp:"Delay Propagation", nm:"Normal Dep." },
-        chains: { all:"Show All", floor:"Floor Chain", wall:"Wall/Ceiling", mep:"MEP Systems", equip:"Kitchen Equip", elec:"Electrical", plumb:"Plumbing", reg:"Regulatory" },
+        chains: { all:"Show All", floor:"Floor Chain", wall:"Wall/Ceiling", mep:"MEP Systems", equip:"Kitchen Equip", elec:"Electrical", plumb:"Plumbing", reg:"Regulatory", cny:"CNY Impact" },
         phases: [
           "Phase 0: Preparation / Handover / Submissions",
           "Phase 1: Demolition & Removal",
@@ -78,6 +79,7 @@
           crit:"Critical Tasks", added:"New Tasks", done:"Completed",
           root:"Root Causes Top 3",
           r1:"1. Floor works cascade", r2:"2. External contractor dep.", r3:"3. Scope expansion (+8 tasks)",
+          cnyTitle:"CNY Holiday Period", cnyDate:"Feb 14 (Fri) — Feb 25 (Tue)", cnyNote:"12 days no construction", cnyAffect:"Affected Tasks",
         },
       },
     };
@@ -154,7 +156,8 @@
       { id:"misc", ja:"小型家電搬入 [新規]", en:"Small Appliances [NEW]", sub:"ANTWAY", phase:7, col:1, status:"new", prog:"—→0%", j:"—", f:"09/03-13/03 (5d)", delay:0, chains:["finish"] },
       { id:"clean", ja:"エリア清掃", en:"Area Cleaning", sub:"FOODNET", phase:7, col:2, status:"critical", prog:"0%→0%", j:"26/01-29/01 (4d)", f:"17/03-20/03", delay:50, chains:["floor","wall","mep","equip","finish"], noteJa:"全工程遅延の集約。50日遅延", noteEn:"Aggregate of all upstream delays. 50-day delay" },
       { id:"lbl_sfa", ja:"SFA検査用ラベリング", en:"Room Labelling for SFA", sub:"FOODNET", phase:7, col:3, status:"critical", prog:"0%→0%", j:"30/01", f:"20/03", delay:49, chains:["floor","wall","mep","equip","reg","finish"], noteJa:"49日遅延。SFA検査の前提", noteEn:"49-day delay. Prerequisite for SFA inspection" },
-      { id:"handover", ja:"プロジェクト完了", en:"Project Completion", sub:"ALL", phase:7, col:4, status:"critical", prog:"—", j:"Week13 (2/28)", f:"Week17 (3/23)", delay:23, chains:["floor","wall","mep","equip","reg","finish"], noteJa:"4週間のプロジェクト全体遅延", noteEn:"4-week overall project delay" },
+      { id:"train", ja:"Antwayトレーニング", en:"Antway Staff Training", sub:"ANTWAY", phase:7, col:4, status:"wait", prog:"0%→0%", j:"—", f:"06/03-23/03 (18d)", delay:0, chains:["equip","finish"], noteJa:"CNY明け後、機器使用方法のスタッフ研修開始", noteEn:"Post-CNY staff training on equipment operation" },
+      { id:"handover", ja:"プロジェクト完了", en:"Project Completion", sub:"ALL", phase:7, col:5, status:"critical", prog:"—", j:"Week13 (2/28)", f:"Week17 (3/23)", delay:23, chains:["floor","wall","mep","equip","reg","finish"], noteJa:"4週間のプロジェクト全体遅延", noteEn:"4-week overall project delay" },
     ];
 
     const EDGES = [
@@ -212,10 +215,15 @@
       { from:"fssd", to:"handover", type:"delay" },
       { from:"k_test2", to:"handover", type:"normal" },
       { from:"e_lew", to:"handover", type:"normal" },
+      { from:"k_test1", to:"train", type:"normal", lJa:"機器→研修", lEn:"Equip→Train" },
+      { from:"train", to:"handover", type:"normal" },
     ];
 
-    const CHAIN_KEYS = ["all","floor","wall","mep","equip","elec","plumb","reg"];
-    const CHAIN_COLORS = { all:"#94a3b8", floor:"#ef4444", wall:"#f59e0b", mep:"#3b82f6", equip:"#8b5cf6", elec:"#06b6d4", plumb:"#10b981", reg:"#f43f5e", finish:"#94a3b8" };
+    // CNY Holiday: 2/14-2/25 — tasks with FEB6 dates overlapping this period
+    const CNY_AFFECTED = ["f_cure","w_epoxy","w_door","w_fdoor","r_cold","r_ceil","f_raised"];
+
+    const CHAIN_KEYS = ["all","floor","wall","mep","equip","elec","plumb","reg","cny"];
+    const CHAIN_COLORS = { all:"#94a3b8", floor:"#ef4444", wall:"#f59e0b", mep:"#3b82f6", equip:"#8b5cf6", elec:"#06b6d4", plumb:"#10b981", reg:"#f43f5e", finish:"#94a3b8", cny:"#ff6b6b" };
 
     const STATUS_STYLES = {
       done:     { bg:"#064e3b", bd:"#4ade80" },
@@ -272,9 +280,14 @@
       const t = L[lang];
       const { svgW, svgH, phaseY, pos } = useMemo(() => calcLayout(TASKS), []);
 
-      const vis = useCallback(task => chain==="all" || task.chains.includes(chain), [chain]);
+      const vis = useCallback(task => {
+        if(chain==="all") return true;
+        if(chain==="cny") return CNY_AFFECTED.includes(task.id);
+        return task.chains.includes(chain);
+      }, [chain]);
       const eVis = useCallback(e => {
         if (chain==="all") return true;
+        if (chain==="cny") return CNY_AFFECTED.includes(e.from) && CNY_AFFECTED.includes(e.to);
         const a=TASKS.find(x=>x.id===e.from), b=TASKS.find(x=>x.id===e.to);
         return a && b && a.chains.includes(chain) && b.chains.includes(chain);
       }, [chain]);
@@ -403,6 +416,7 @@
                   <rect x={p.x+8} y={p.y+36} width={(NW-16)*pct(task.prog)/100} height={3.5} rx={2} fill={s.bd}/>
                   {task.delay>0&&<><rect x={p.x+NW-34} y={p.y-5} width={36} height={13} rx={6} fill={task.delay>=15?"#ef4444":"#f59e0b"}/><text x={p.x+NW-16} y={p.y+5} fontSize={7.5} fontWeight={700} fill="#fff" textAnchor="middle">+{task.delay}{lang==="ja"?"日":"d"}</text></>}
                   {task.status==="new"&&<><rect x={p.x-2} y={p.y-5} width={26} height={13} rx={6} fill="#8b5cf6"/><text x={p.x+11} y={p.y+5} fontSize={7} fontWeight={700} fill="#fff" textAnchor="middle">NEW</text></>}
+                  {CNY_AFFECTED.includes(task.id)&&<><rect x={p.x+NW-58} y={p.y+NH-8} width={30} height={12} rx={5} fill="#ff6b6b"/><text x={p.x+NW-43} y={p.y+NH+1} fontSize={7} fontWeight={700} fill="#fff" textAnchor="middle">CNY</text></>}
                 </g>);
               })}
             </svg>
@@ -450,6 +464,20 @@
               <div style={{ fontWeight:700, color:"#fbbf24", marginBottom:4 }}>{t.summary.root}</div>
               <div style={{ color:"#cbd5e1", lineHeight:1.6 }}>
                 {t.summary.r1}<br/>{t.summary.r2}<br/>{t.summary.r3}
+              </div>
+            </div>
+          </div>
+
+          {/* CNY Holiday Panel */}
+          <div style={{ position:"fixed", right:12, top:400, width:220, background:"#1e293bdd", backdropFilter:"blur(8px)",
+            border:"1px solid #ff6b6b", borderRadius:10, padding:14, fontSize:10, zIndex:50 }}>
+            <div style={{ fontSize:13, fontWeight:700, color:"#ff6b6b", marginBottom:8 }}>{t.summary.cnyTitle}</div>
+            <div style={{ padding:"3px 0", color:"#ff6b6b", fontWeight:700, fontSize:12 }}>{t.summary.cnyDate}</div>
+            <div style={{ padding:"3px 0", color:"#fbbf24" }}>{t.summary.cnyNote}</div>
+            <div style={{ marginTop:6, paddingTop:6, borderTop:"1px solid #ff6b6b44" }}>
+              <div style={{ color:"#94a3b8", marginBottom:4 }}>{t.summary.cnyAffect}: {CNY_AFFECTED.length}</div>
+              <div style={{ color:"#cbd5e1", lineHeight:1.6, fontSize:9 }}>
+                {CNY_AFFECTED.map(id => { const tk=TASKS.find(x=>x.id===id); return tk ? (lang==="ja"?tk.ja:tk.en) : id; }).join(", ")}
               </div>
             </div>
           </div>
