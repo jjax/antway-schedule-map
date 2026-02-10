@@ -277,6 +277,8 @@
       const [chain, setChain] = useState("all");
       const [hov, setHov] = useState(null);
       const [tip, setTip] = useState(null);
+      const [showSummary, setShowSummary] = useState(true);
+      const [showCny, setShowCny] = useState(true);
       const t = L[lang];
       const { svgW, svgH, phaseY, pos } = useMemo(() => calcLayout(TASKS), []);
 
@@ -445,8 +447,12 @@
 
           {/* Summary */}
           <div style={{ position:"fixed", right:12, top:120, width:220, background:"#1e293bdd", backdropFilter:"blur(8px)",
-            border:"1px solid #334155", borderRadius:10, padding:14, fontSize:10, zIndex:50 }}>
-            <div style={{ fontSize:13, fontWeight:700, color:"#60a5fa", marginBottom:8 }}>{t.summary.title}</div>
+            border:"1px solid #334155", borderRadius:10, padding:14, fontSize:10, zIndex:50, transition:"all 0.2s" }}>
+            <div onClick={()=>setShowSummary(!showSummary)} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
+              <div style={{ fontSize:13, fontWeight:700, color:"#60a5fa" }}>{t.summary.title}</div>
+              <div style={{ color:"#64748b", fontSize:14, transform:showSummary?"rotate(0)":"rotate(-90deg)", transition:"transform 0.2s" }}>&#9660;</div>
+            </div>
+            {showSummary&&<div style={{ marginTop:8 }}>
             {[
               [t.summary.ext, "+23"+t.tip.days, "#f87171"],
               [t.summary.orig, "Week13 (2/28)", "#94a3b8"],
@@ -466,12 +472,17 @@
                 {t.summary.r1}<br/>{t.summary.r2}<br/>{t.summary.r3}
               </div>
             </div>
+            </div>}
           </div>
 
           {/* CNY Holiday Panel */}
-          <div style={{ position:"fixed", right:12, top:400, width:220, background:"#1e293bdd", backdropFilter:"blur(8px)",
-            border:"1px solid #ff6b6b", borderRadius:10, padding:14, fontSize:10, zIndex:50 }}>
-            <div style={{ fontSize:13, fontWeight:700, color:"#ff6b6b", marginBottom:8 }}>{t.summary.cnyTitle}</div>
+          <div style={{ position:"fixed", right:12, top:showSummary?400:180, width:220, background:"#1e293bdd", backdropFilter:"blur(8px)",
+            border:"1px solid #ff6b6b", borderRadius:10, padding:14, fontSize:10, zIndex:50, transition:"all 0.2s" }}>
+            <div onClick={()=>setShowCny(!showCny)} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
+              <div style={{ fontSize:13, fontWeight:700, color:"#ff6b6b" }}>{t.summary.cnyTitle}</div>
+              <div style={{ color:"#ff6b6b", fontSize:14, transform:showCny?"rotate(0)":"rotate(-90deg)", transition:"transform 0.2s" }}>&#9660;</div>
+            </div>
+            {showCny&&<div style={{ marginTop:8 }}>
             <div style={{ padding:"3px 0", color:"#ff6b6b", fontWeight:700, fontSize:12 }}>{t.summary.cnyDate}</div>
             <div style={{ padding:"3px 0", color:"#fbbf24" }}>{t.summary.cnyNote}</div>
             <div style={{ marginTop:6, paddingTop:6, borderTop:"1px solid #ff6b6b44" }}>
@@ -480,6 +491,7 @@
                 {CNY_AFFECTED.map(id => { const tk=TASKS.find(x=>x.id===id); return tk ? (lang==="ja"?tk.ja:tk.en) : id; }).join(", ")}
               </div>
             </div>
+            </div>}
           </div>
         </div>
       );
