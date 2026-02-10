@@ -43,6 +43,7 @@
           "Phase 5: 配管・電気 (Landlord管理)",
           "Phase 6: 厨房機器搬入",
           "Phase 7: 仕上げ・検査・完了",
+          "Phase 8: Antwayトレーニング",
         ],
         tip: { assignee:"担当", jan:"JAN12", feb:"FEB6", prog:"進捗推移", delay:"遅延日数", none:"なし", days:"日" },
         summary: {
@@ -71,6 +72,7 @@
           "Phase 5: Plumbing & Electrical (Landlord-managed)",
           "Phase 6: Kitchen Equipment Installation",
           "Phase 7: Finishing / Inspection / Completion",
+          "Phase 8: Antway Staff Training",
         ],
         tip: { assignee:"Assignee", jan:"JAN12", feb:"FEB6", prog:"Progress", delay:"Delay", none:"None", days:" days" },
         summary: {
@@ -156,8 +158,10 @@
       { id:"misc", ja:"小型家電搬入 [新規]", en:"Small Appliances [NEW]", sub:"ANTWAY", phase:7, col:1, status:"new", prog:"—→0%", j:"—", f:"09/03-13/03 (5d)", delay:0, chains:["finish"] },
       { id:"clean", ja:"エリア清掃", en:"Area Cleaning", sub:"FOODNET", phase:7, col:2, status:"critical", prog:"0%→0%", j:"26/01-29/01 (4d)", f:"17/03-20/03", delay:50, chains:["floor","wall","mep","equip","finish"], noteJa:"全工程遅延の集約。50日遅延", noteEn:"Aggregate of all upstream delays. 50-day delay" },
       { id:"lbl_sfa", ja:"SFA検査用ラベリング", en:"Room Labelling for SFA", sub:"FOODNET", phase:7, col:3, status:"critical", prog:"0%→0%", j:"30/01", f:"20/03", delay:49, chains:["floor","wall","mep","equip","reg","finish"], noteJa:"49日遅延。SFA検査の前提", noteEn:"49-day delay. Prerequisite for SFA inspection" },
-      { id:"train", ja:"Antwayトレーニング", en:"Antway Staff Training", sub:"ANTWAY", phase:7, col:4, status:"wait", prog:"0%→0%", j:"—", f:"06/03-23/03 (18d)", delay:0, chains:["equip","finish"], noteJa:"CNY明け後、機器使用方法のスタッフ研修開始", noteEn:"Post-CNY staff training on equipment operation" },
-      { id:"handover", ja:"プロジェクト完了", en:"Project Completion", sub:"ALL", phase:7, col:5, status:"critical", prog:"—", j:"Week13 (2/28)", f:"Week17 (3/23)", delay:23, chains:["floor","wall","mep","equip","reg","finish"], noteJa:"4週間のプロジェクト全体遅延", noteEn:"4-week overall project delay" },
+      { id:"handover", ja:"プロジェクト完了", en:"Project Completion", sub:"ALL", phase:7, col:4, status:"critical", prog:"—", j:"Week13 (2/28)", f:"Week17 (3/23)", delay:23, chains:["floor","wall","mep","equip","reg","finish"], noteJa:"4週間のプロジェクト全体遅延", noteEn:"4-week overall project delay" },
+
+      // Phase 8 - Antway Training
+      { id:"train", ja:"Antwayトレーニング", en:"Antway Staff Training", sub:"ANTWAY", phase:8, col:0, status:"wait", prog:"0%→0%", j:"—", f:"06/03-23/03 (18d)", delay:0, chains:["equip","finish"], noteJa:"CNY明け後、第1弾・第2弾テスト完了後にスタッフ研修開始", noteEn:"Post-CNY staff training after Batch 1 & 2 testing complete" },
     ];
 
     const EDGES = [
@@ -215,8 +219,8 @@
       { from:"fssd", to:"handover", type:"delay" },
       { from:"k_test2", to:"handover", type:"normal" },
       { from:"e_lew", to:"handover", type:"normal" },
-      { from:"k_test1", to:"train", type:"normal", lJa:"機器→研修", lEn:"Equip→Train" },
-      { from:"train", to:"handover", type:"normal" },
+      { from:"k_test1", to:"train", type:"normal", lJa:"第1弾→研修", lEn:"Batch1→Train" },
+      { from:"k_test2", to:"train", type:"normal", lJa:"第2弾→研修", lEn:"Batch2→Train" },
     ];
 
     // CNY Holiday: 2/14-2/25 — tasks with FEB6 dates overlapping this period
@@ -240,7 +244,7 @@
       normal:   { stroke:"#475569", w:1.5, dash:"" },
     };
 
-    const PHASE_COLORS = ["#334155","#1e3a5f","#5b1a1a","#1e3a5f","#334155","#1e3a5f","#334155","#5b1a1a"];
+    const PHASE_COLORS = ["#334155","#1e3a5f","#5b1a1a","#1e3a5f","#334155","#1e3a5f","#334155","#5b1a1a","#1a4d3a"];
 
     // ── Layout ──
     const NW=155, NH=52, PX=18, PY=14, LM=16, TM=8, PH=28, PP=30;
@@ -252,7 +256,7 @@
       const svgW = LM*2 + maxC*(NW+PX);
       let y = TM;
       const phaseY = {};
-      for (let p=0; p<8; p++) {
+      for (let p=0; p<9; p++) {
         const cols = phaseCols[p]||1;
         const rows = Math.ceil(cols/maxC);
         phaseY[p] = { top:y, bodyH: rows*(NH+PY)+PY };
@@ -379,7 +383,7 @@
               </defs>
 
               {/* Phase bands */}
-              {[0,1,2,3,4,5,6,7].map(p=>{
+              {[0,1,2,3,4,5,6,7,8].map(p=>{
                 const py=phaseY[p]; if(!py) return null;
                 return (<g key={p}>
                   <rect x={0} y={py.top} width={svgW} height={PH+py.bodyH} rx={4} fill={PHASE_COLORS[p]} opacity={0.3}/>
